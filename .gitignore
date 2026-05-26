@@ -1,0 +1,15 @@
+# Node
+node_modules/
+npm-debug.log
+
+# Firebase
+.firebase/
+.firebaserc.local
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Editor
+.vscode/
+.idea/
