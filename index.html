@@ -11,12 +11,14 @@
 <body>
 <div class="container">
     <header>
-        <div class="logo">VOID<span>CHAT</span></div>
-        <div class="header-right">
-            <div id="online-count">0 online</div>
-            <button onclick="changeUsername()">👤 Change Name</button>
-        </div>
-    </header>
+    <div class="logo" onclick="openPublicChat()" style="cursor: pointer;">
+        VOID<span>CHAT</span>
+    </div>
+    <div class="header-right">
+        <div id="online-count">0 online</div>
+        <button onclick="showProfilePanel()">👤 Profile</button>
+    </div>
+</header>
 
     <div class="chat-area">
         <div id="messages" class="messages"></div>
