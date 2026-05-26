@@ -1,0 +1,37 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>VOIDCHAT • Live</title>
+    <link rel="stylesheet" href="styles.css">
+    <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-database-compat.js"></script>
+</head>
+<body>
+<div class="container">
+    <header>
+        <div class="logo">VOID<span>CHAT</span></div>
+        <div class="header-right">
+            <div id="online-count">0 online</div>
+            <button onclick="changeUsername()">👤 Change Name</button>
+        </div>
+    </header>
+
+    <div class="chat-area">
+        <div id="messages" class="messages"></div>
+
+        <div class="input-area">
+            <input type="text" id="message-input" placeholder="Type a message..." autocomplete="off">
+            <button onclick="sendMessage()">SEND</button>
+        </div>
+    </div>
+
+    <footer>
+        <p>Public Chat • Share this link to chat with others</p>
+    </footer>
+</div>
+
+<script src="script.js"></script>
+</body>
+</html>
