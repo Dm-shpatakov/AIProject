@@ -1,199 +1,495 @@
-// ================== FIREBASE CONFIG ==================
+// ========================= script.js =========================
+
+// ================= FIREBASE =================
+
 const firebaseConfig = {
-    apiKey: "AIzaSyAIiUTo4vfh6cQNEeP6-gnCR-01wmvjVmc",
-    authDomain: "aiproject-63331.firebaseapp.com",
-    projectId: "aiproject-63331",
-    storageBucket: "aiproject-63331.firebasestorage.app",
-    messagingSenderId: "1021315967606",
-    appId: "1:1021315967606:web:1257b476cae1945abb0d57"
+    apiKey: "YOUR_API_KEY",
+    authDomain: "YOUR_DOMAIN",
+    databaseURL: "YOUR_DATABASE_URL",
+    projectId: "YOUR_PROJECT_ID",
+    storageBucket: "YOUR_BUCKET",
+    messagingSenderId: "YOUR_SENDER_ID",
+    appId: "YOUR_APP_ID"
 };
 
 firebase.initializeApp(firebaseConfig);
+
 const db = firebase.database();
+const auth = firebase.auth();
 
-const messagesRef = db.ref("public_chat");
-const onlineRef = db.ref("online_users");
-const usersRef = db.ref("users");
+// ================= GLOBALS =================
 
-// ================== USER SETTINGS ==================
-let username = localStorage.getItem("voidUsername") || "Guest" + Math.floor(Math.random() * 9999);
-let userColor = localStorage.getItem("userColor") || "#" + Math.floor(Math.random() * 16777215).toString(16);
-let userBio = localStorage.getItem("userBio") || "Just vibing in the void...";
-
+let currentUser = null;
 let currentChat = "public";
-let messageListener = null; // Prevent duplicate listeners
+let currentListener = null;
 
-// DOM Elements
-const messagesDiv = document.getElementById("messages");
+const messagesEl = document.getElementById("messages");
 const messageInput = document.getElementById("message-input");
 const onlineCountEl = document.getElementById("online-count");
 
-// ================== HELPER FUNCTIONS ==================
+// ================= LOCAL PROFILE =================
+
+let username = localStorage.getItem("void_username");
+let userColor = localStorage.getItem("void_color");
+let userBio = localStorage.getItem("void_bio");
+
+if (!username) {
+    username = "Guest" + Math.floor(Math.random() * 9999);
+}
+
+if (!userColor) {
+    userColor = "#" + Math.floor(Math.random() * 16777215).toString(16);
+}
+
+if (!userBio) {
+    userBio = "Lost in the void...";
+}
+
+// ================= HELPERS =================
+
 function escapeHtml(text) {
-    const div = document.createElement('div');
+
+    const div = document.createElement("div");
+
     div.textContent = text;
+
     return div.innerHTML;
 }
 
-function saveUserProfile() {
-    localStorage.setItem("voidUsername", username);
-    localStorage.setItem("userColor", userColor);
-    localStorage.setItem("userBio", userBio);
-    
-    usersRef.child(username.toLowerCase()).update({
-        username: username,
-        color: userColor,
-        bio: userBio,
-        lastSeen: Date.now()
+function formatTime(timestamp) {
+
+    return new Date(timestamp).toLocaleTimeString([], {
+        hour: "2-digit",
+        minute: "2-digit"
     });
 }
 
-function showProfilePanel() {
-    const panelHTML = `
-        <div class="profile-panel">
-            <h2>👤 Your Profile</h2>
-            <p><strong>Username:</strong> ${escapeHtml(username)}</p>
-            <p><strong>Color:</strong> <span style="color:${userColor}">${userColor}</span></p>
-            <p><strong>Bio:</strong> ${escapeHtml(userBio)}</p>
-            
-            <button onclick="editProfile()">Edit Profile</button>
-            <button onclick="closeProfilePanel()">Close</button>
-        </div>
-    `;
-    const panel = document.createElement('div');
-    panel.className = "modal";
-    panel.innerHTML = panelHTML;
-    document.body.appendChild(panel);
+function getChatId(uid1, uid2) {
+
+    return [uid1, uid2].sort().join("_");
 }
 
-function editProfile() {
-    const newName = prompt("New username:", username);
-    const newBio = prompt("Your bio (max 80 chars):", userBio);
-    
-    if (newName && newName.trim() !== "") {
-        username = newName.trim().substring(0, 25);
-        userBio = newBio ? newBio.substring(0, 80) : userBio;
-        userColor = "#" + Math.floor(Math.random() * 16777215).toString(16);
-        
-        saveUserProfile();
-        closeProfilePanel();
-        alert("Profile updated! Refreshing...");
-        location.reload();
-    }
+function saveLocalProfile() {
+
+    localStorage.setItem("void_username", username);
+    localStorage.setItem("void_color", userColor);
+    localStorage.setItem("void_bio", userBio);
 }
 
-function closeProfilePanel() {
-    const modal = document.querySelector('.modal');
-    if (modal) modal.remove();
+// ================= AUTH =================
+
+async function initAuth() {
+
+    return new Promise((resolve) => {
+
+        auth.onAuthStateChanged(async (user) => {
+
+            if (user) {
+
+                resolve(user);
+
+            } else {
+
+                await auth.signInAnonymously();
+            }
+
+        });
+
+    });
 }
 
-// ================== SEND MESSAGE ==================
-function sendMessage() {
+// ================= USER SAVE =================
+
+async function saveUserProfile() {
+
+    const uid = currentUser.uid;
+
+    const userData = {
+        uid,
+        username,
+        usernameLower: username.toLowerCase(),
+        color: userColor,
+        bio: userBio,
+        lastSeen: firebase.database.ServerValue.TIMESTAMP
+    };
+
+    await db.ref(`users/${uid}`).set(userData);
+
+    await db.ref(`usernames/${username.toLowerCase()}`).set(uid);
+
+    saveLocalProfile();
+}
+
+// ================= PRESENCE =================
+
+function setupPresence() {
+
+    const connectedRef = db.ref(".info/connected");
+
+    connectedRef.on("value", (snap) => {
+
+        if (snap.val() === true) {
+
+            const statusRef = db.ref(`presence/${currentUser.uid}`);
+
+            statusRef.set({
+                username,
+                online: true,
+                lastChanged: firebase.database.ServerValue.TIMESTAMP
+            });
+
+            statusRef.onDisconnect().remove();
+        }
+
+    });
+
+    db.ref("presence").on("value", (snap) => {
+
+        onlineCountEl.textContent =
+            `${snap.numChildren()} online`;
+    });
+}
+
+// ================= SEND MESSAGE =================
+
+let lastMessageTime = 0;
+
+async function sendMessage() {
+
     const text = messageInput.value.trim();
+
     if (!text) return;
+
     if (text.length > 500) {
-        alert("Message too long! (Max 500 characters)");
+        return alert("Message too long");
+    }
+
+    const now = Date.now();
+
+    if (now - lastMessageTime < 700) {
         return;
     }
 
+    lastMessageTime = now;
+
     const msgData = {
-        username: username,
-        userColor: userColor,
-        text: text,
-        timestamp: Date.now()
+        uid: currentUser.uid,
+        username,
+        userColor,
+        text,
+        timestamp: firebase.database.ServerValue.TIMESTAMP
     };
 
+    let ref;
+
     if (currentChat === "public") {
-        messagesRef.push(msgData);
+
+        ref = db.ref("publicMessages");
+
     } else {
-        const dmPath = getDMPath(username, currentChat);
-        db.ref(dmPath).push(msgData);
+
+        const chatId =
+            getChatId(currentUser.uid, currentChat);
+
+        ref = db.ref(`privateChats/${chatId}/messages`);
     }
+
+    await ref.push(msgData);
 
     messageInput.value = "";
 }
 
-function getDMPath(user1, user2) {
-    const sorted = [user1.toLowerCase(), user2.toLowerCase()].sort();
-    return `dms/${sorted[0]}_${sorted[1]}`;
+// ================= LOAD MESSAGES =================
+
+function removeCurrentListener() {
+
+    if (currentListener) {
+        currentListener.off();
+    }
 }
 
-// ================== LOAD MESSAGES ==================
+function renderMessage(msg) {
+
+    const isOwn = msg.uid === currentUser.uid;
+
+    const html = `
+        <div class="message ${isOwn ? "own" : ""}">
+
+            <div
+                class="message-header"
+                style="color:${msg.userColor}"
+            >
+                ${escapeHtml(msg.username)}
+            </div>
+
+            <div class="message-text">
+                ${escapeHtml(msg.text)}
+            </div>
+
+            <div class="timestamp">
+                ${formatTime(msg.timestamp || Date.now())}
+            </div>
+
+        </div>
+    `;
+
+    messagesEl.insertAdjacentHTML("beforeend", html);
+
+    messagesEl.scrollTop = messagesEl.scrollHeight;
+}
+
 function loadMessages() {
-    // Remove old listener to prevent duplicates
-    if (messageListener) {
-        messageListener.off();
+
+    removeCurrentListener();
+
+    messagesEl.innerHTML = "";
+
+    let ref;
+
+    if (currentChat === "public") {
+
+        ref = db.ref("publicMessages")
+            .limitToLast(100);
+
+    } else {
+
+        const chatId =
+            getChatId(currentUser.uid, currentChat);
+
+        ref = db.ref(`privateChats/${chatId}/messages`)
+            .limitToLast(100);
     }
 
-    messagesDiv.innerHTML = "";
+    currentListener = ref;
 
-    let ref = currentChat === "public" ? messagesRef : db.ref(getDMPath(username, currentChat));
+    ref.on("child_added", (snap) => {
 
-    messageListener = ref.on("child_added", (snapshot) => {
-        const msg = snapshot.val();
+        const msg = snap.val();
+
         if (!msg) return;
 
-        const isOwn = msg.username === username;
+        renderMessage(msg);
+    });
+}
 
-        const html = `
-            <div class="message ${isOwn ? 'own' : ''}">
-                <div class="message-header" style="color: ${msg.userColor || '#ff00aa'}">
-                    ${escapeHtml(msg.username)}
-                </div>
-                <div class="message-text">${escapeHtml(msg.text)}</div>
-                <div class="timestamp">${new Date(msg.timestamp).toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'})}</div>
+// ================= PUBLIC CHAT =================
+
+function openPublicChat() {
+
+    currentChat = "public";
+
+    document.querySelector(".logo").innerHTML =
+        `VOID<span>CHAT</span>`;
+
+    loadMessages();
+}
+
+// ================= SEARCH USER =================
+
+async function searchUser() {
+
+    const input =
+        document.getElementById("user-search");
+
+    const resultEl =
+        document.getElementById("search-results");
+
+    const query =
+        input.value.trim().toLowerCase();
+
+    if (!query) {
+
+        resultEl.innerHTML = "";
+
+        return;
+    }
+
+    const usernameSnap =
+        await db.ref(`usernames/${query}`).get();
+
+    if (!usernameSnap.exists()) {
+
+        resultEl.innerHTML = `
+            <div class="user-card">
+                User not found
             </div>
         `;
 
-        messagesDiv.innerHTML += html;
-        messagesDiv.scrollTop = messagesDiv.scrollHeight;
-    });
-}
-
-// ================== ONLINE USERS ==================
-function setupOnline() {
-    const myRef = onlineRef.push({ username: username, lastSeen: Date.now() });
-    myRef.onDisconnect().remove();
-
-    onlineRef.on("value", (snap) => {
-        onlineCountEl.textContent = `${snap.numChildren()} online`;
-    });
-
-    saveUserProfile();
-}
-
-// ================== CHAT SWITCHING ==================
-function openPublicChat() {
-    currentChat = "public";
-    document.querySelector('.logo').innerHTML = `VOID<span>CHAT</span>`;
-    loadMessages();
-}
-
-function openDM(targetUser) {
-    if (targetUser === username) return alert("Can't message yourself");
-    currentChat = targetUser;
-    document.querySelector('.logo').innerHTML = `VOIDCHAT • <span style="color:${userColor}">@${targetUser}</span>`;
-    loadMessages();
-}
-
-// ================== INITIALIZE ==================
-window.onload = () => {
-    // Username setup
-    if (!localStorage.getItem("voidUsername")) {
-        const defaultName = "Guest" + Math.floor(Math.random() * 9999);
-        const name = prompt("Choose your username:", defaultName);
-        if (name) username = name.trim().substring(0, 25);
-        saveUserProfile();
+        return;
     }
 
-    setupOnline();
-    loadMessages(); // Initial load
+    const targetUID = usernameSnap.val();
 
-    // Enter key - SINGLE listener
-    messageInput.addEventListener("keypress", (e) => {
-        if (e.key === "Enter") {
-            e.preventDefault(); // Prevent double send
-            sendMessage();
-        }
-    });
+    const userSnap =
+        await db.ref(`users/${targetUID}`).get();
+
+    if (!userSnap.exists()) {
+
+        resultEl.innerHTML = `
+            <div class="user-card">
+                User not found
+            </div>
+        `;
+
+        return;
+    }
+
+    const user = userSnap.val();
+
+    resultEl.innerHTML = `
+        <div class="user-card">
+
+            <div
+                class="user-name"
+                style="color:${user.color}"
+            >
+                ${escapeHtml(user.username)}
+            </div>
+
+            <div class="user-bio">
+                ${escapeHtml(user.bio)}
+            </div>
+
+            <button onclick="openDM('${targetUID}')">
+                Message
+            </button>
+
+        </div>
+    `;
+}
+
+// ================= OPEN DM =================
+
+async function openDM(targetUID) {
+
+    if (targetUID === currentUser.uid) {
+        return alert("You cannot DM yourself");
+    }
+
+    const userSnap =
+        await db.ref(`users/${targetUID}`).get();
+
+    if (!userSnap.exists()) {
+        return alert("User not found");
+    }
+
+    const targetUser = userSnap.val();
+
+    currentChat = targetUID;
+
+    document.querySelector(".logo").innerHTML =
+        `DM • <span style="color:${targetUser.color}">
+            @${escapeHtml(targetUser.username)}
+        </span>`;
+
+    loadMessages();
+}
+
+// ================= PROFILE =================
+
+function showProfilePanel() {
+
+    const modal = document.createElement("div");
+
+    modal.className = "modal";
+
+    modal.innerHTML = `
+        <div class="profile-panel">
+
+            <h2>Edit Profile</h2>
+
+            <input
+                id="edit-name"
+                maxlength="25"
+                value="${escapeHtml(username)}"
+            >
+
+            <textarea
+                id="edit-bio"
+                maxlength="80"
+            >${escapeHtml(userBio)}</textarea>
+
+            <button onclick="saveProfileChanges()">
+                Save
+            </button>
+
+            <button onclick="closeModal()">
+                Close
+            </button>
+
+        </div>
+    `;
+
+    document.body.appendChild(modal);
+}
+
+async function saveProfileChanges() {
+
+    const newName =
+        document.getElementById("edit-name")
+        .value
+        .trim();
+
+    const newBio =
+        document.getElementById("edit-bio")
+        .value
+        .trim();
+
+    if (!newName) {
+        return alert("Username required");
+    }
+
+    const takenSnap =
+        await db.ref(
+            `usernames/${newName.toLowerCase()}`
+        ).get();
+
+    if (
+        takenSnap.exists() &&
+        takenSnap.val() !== currentUser.uid
+    ) {
+        return alert("Username already taken");
+    }
+
+    username = newName;
+    userBio = newBio;
+
+    await saveUserProfile();
+
+    closeModal();
+
+    alert("Profile updated");
+}
+
+function closeModal() {
+
+    const modal =
+        document.querySelector(".modal");
+
+    if (modal) modal.remove();
+}
+
+// ================= ENTER KEY =================
+
+messageInput.addEventListener("keypress", (e) => {
+
+    if (e.key === "Enter") {
+
+        e.preventDefault();
+
+        sendMessage();
+    }
+});
+
+// ================= INIT =================
+
+window.onload = async () => {
+
+    currentUser = await initAuth();
+
+    await saveUserProfile();
+
+    setupPresence();
+
+    loadMessages();
 };
