@@ -1,0 +1,40 @@
+{
+  "rules": {
+    "publicMessages": {
+      ".read":  "auth != null",
+      ".indexOn": ["timestamp"],
+      "$msgId": {
+        ".write": "auth != null && (!data.exists() || data.child('uid').val() === auth.uid)",
+        ".validate": "newData.hasChildren(['uid','username','color','text','timestamp']) && newData.child('uid').val() === auth.uid && newData.child('text').isString() && newData.child('text').val().length > 0 && newData.child('text').val().length <= 500"
+      }
+    },
+    "dms": {
+      "$chatId": {
+        ".read":  "auth != null && $chatId.contains(auth.uid)",
+        ".write": "auth != null && $chatId.contains(auth.uid)",
+        "$msgId": {
+          ".validate": "newData.hasChildren(['uid','username','color','text','timestamp']) && newData.child('uid').val() === auth.uid && newData.child('text').isString() && newData.child('text').val().length > 0 && newData.child('text').val().length <= 500"
+        }
+      }
+    },
+    "users": {
+      ".read": "auth != null",
+      "$uid": {
+        ".write":    "auth != null && auth.uid === $uid",
+        ".validate": "newData.hasChildren(['uid','username','usernameLower','color'])"
+      }
+    },
+    "usernames": {
+      ".read": "auth != null",
+      "$name": {
+        ".write": "auth != null && (!data.exists() || data.val() === auth.uid) && newData.val() === auth.uid"
+      }
+    },
+    "presence": {
+      ".read": "auth != null",
+      "$uid": {
+        ".write": "auth != null && auth.uid === $uid"
+      }
+    }
+  }
+}

@@ -1,511 +1,554 @@
-// ========================= script.js =========================
-// VOIDCHAT v2.0 — Firebase Realtime DB + Anonymous Auth
+(function () {
+    "use strict";
 
-// ── Firebase Config ──────────────────────────────────────────
-// ⚠️  Replace these values with your own from Firebase Console:
-//     https://console.firebase.google.com → Project Settings → Your apps
-const firebaseConfig = {
-    apiKey:            "AIzaSy....",                        // ← your key
-    authDomain:        "aiproject-63331.firebaseapp.com",
-    databaseURL:       "https://aiproject-63331-default-rtdb.firebaseio.com",
-    projectId:         "aiproject-63331",
-    storageBucket:     "aiproject-63331.appspot.com",
-    messagingSenderId: "1021315967606",
-    appId:             "1:1021315967606:web:1257b476cae1945abb0d57"
-};
-
-firebase.initializeApp(firebaseConfig);
-
-const db   = firebase.database();
-const auth = firebase.auth();
-
-// ── Global State ─────────────────────────────────────────────
-
-let currentUser    = null;
-let currentChat    = "public";
-let currentListener = null;
-let messagesEl, messageInput, onlineNumEl;
-let lastSend       = 0;
-
-// ── Local User Data ───────────────────────────────────────────
-
-let username  = localStorage.getItem("username")  || "Ghost" + Math.floor(Math.random() * 9999);
-let userColor = localStorage.getItem("color")     || randomColor();
-let userBio   = localStorage.getItem("bio")       || "Just passing through...";
-
-function randomColor() {
-    const colors = ["#00ff9d","#ff00aa","#00aaff","#ffaa00","#aa00ff","#ff6600","#00ffff"];
-    return colors[Math.floor(Math.random() * colors.length)];
-}
-
-// ── Helpers ───────────────────────────────────────────────────
-
-function escapeHtml(text) {
-    const d = document.createElement("div");
-    d.textContent = text;
-    return d.innerHTML;
-}
-
-function formatTime(ts) {
-    return new Date(ts).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
-}
-
-function chatId(uid1, uid2) {
-    return [uid1, uid2].sort().join("_");
-}
-
-function initials(name) {
-    return name.slice(0, 2).toUpperCase();
-}
-
-function showToast(msg, type = "success") {
-    const existing = document.querySelector(".toast");
-    if (existing) existing.remove();
-
-    const t = document.createElement("div");
-    t.className = "toast";
-    t.textContent = msg;
-    if (type === "error") {
-        t.style.borderColor = "#ff4466";
-        t.style.color = "#ff4466";
-        t.style.boxShadow = "0 0 20px rgba(255,68,102,0.35)";
-    }
-    document.body.appendChild(t);
-    requestAnimationFrame(() => t.classList.add("show"));
-    setTimeout(() => {
-        t.classList.remove("show");
-        setTimeout(() => t.remove(), 300);
-    }, 2500);
-}
-
-// ── Auth ──────────────────────────────────────────────────────
-
-async function initAuth() {
-    return new Promise((resolve) => {
-        auth.onAuthStateChanged(async (user) => {
-            if (user) {
-                resolve(user);
-            } else {
-                await auth.signInAnonymously();
-            }
-        });
-    });
-}
-
-// ── Save / Sync User ──────────────────────────────────────────
-
-async function saveUser() {
-    if (!currentUser) return;
-
-    await db.ref("users/" + currentUser.uid).set({
-        uid:           currentUser.uid,
-        username,
-        usernameLower: username.toLowerCase(),
-        color:         userColor,
-        bio:           userBio,
-        lastSeen:      firebase.database.ServerValue.TIMESTAMP
-    });
-
-    // index by lowercase username for search
-    await db.ref("usernames/" + username.toLowerCase()).set(currentUser.uid);
-
-    localStorage.setItem("username", username);
-    localStorage.setItem("color",    userColor);
-    localStorage.setItem("bio",      userBio);
-}
-
-// ── Presence ─────────────────────────────────────────────────
-
-function setupPresence() {
-    const connectedRef = db.ref(".info/connected");
-
-    connectedRef.on("value", (snap) => {
-        if (snap.val() !== true) return;
-
-        const presRef = db.ref("presence/" + currentUser.uid);
-
-        presRef.set({
-            username,
-            color:  userColor,
-            online: true,
-            last:   firebase.database.ServerValue.TIMESTAMP
-        });
-
-        presRef.onDisconnect().remove();
-    });
-
-    db.ref("presence").on("value", (snap) => {
-        onlineNumEl.textContent = snap.numChildren();
-    });
-}
-
-// ── Send Message ──────────────────────────────────────────────
-
-async function sendMessage() {
-    const text = messageInput.value.trim();
-    if (!text) return;
-
-    if (text.length > 500) {
-        showToast("Message too long (max 500 chars)", "error");
-        return;
-    }
-
-    const now = Date.now();
-    if (now - lastSend < 700) {
-        showToast("Slow down!", "error");
-        return;
-    }
-    lastSend = now;
-
-    const msg = {
-        uid:       currentUser.uid,
-        username,
-        color:     userColor,
-        text,
-        timestamp: firebase.database.ServerValue.TIMESTAMP
+        const firebaseConfig = {
+    apiKey: "AIzaSyCQTxLVX7slgDA0NHPkprz-7PuPZRhOJwE",
+    authDomain: "aiproject1-4f3fa.firebaseapp.com",
+    databaseURL: "https://aiproject1-4f3fa-default-rtdb.europe-west1.firebasedatabase.app",
+    projectId: "aiproject1-4f3fa",
+    storageBucket: "aiproject1-4f3fa.firebasestorage.app",
+    messagingSenderId: "795151805871",
+    appId: "1:795151805871:web:44b33fa90cb8609b55d35a"
     };
 
-    const ref = currentChat === "public"
-        ? db.ref("publicMessages")
-        : db.ref("dms/" + chatId(currentUser.uid, currentChat));
+    firebase.initializeApp(firebaseConfig);
+    const db   = firebase.database();
+    const auth = firebase.auth();
 
-    try {
-        await ref.push(msg);
-        messageInput.value = "";
-        updateCharCount();
-    } catch (err) {
-        showToast("Failed to send. Check connection.", "error");
-    }
-}
+    // ─── 2) STATE ──────────────────────────────────────────────────────
+    const COLORS = ["#c6ff3d","#ff6b5b","#79e0ff","#ffcf6b","#c79bff","#5bff9d","#ff9d5b"];
 
-// ── Render Message ────────────────────────────────────────────
+    let currentUser    = null;
+    let currentChat    = "public";
+    let listenerRef    = null;
+    let presenceListenerRef = null;
+    let renderedKeys   = new Set();
+    let lastDay        = null;
+    let lastSentAt     = 0;
 
-function render(msg) {
-    // Remove empty-state if present
-    const empty = messagesEl.querySelector(".empty-state");
-    if (empty) empty.remove();
+    let username  = localStorage.getItem("vc_username") || "ghost-" + Math.floor(Math.random() * 9999);
+    let userColor = localStorage.getItem("vc_color")    || COLORS[Math.floor(Math.random() * COLORS.length)];
+    let userBio   = localStorage.getItem("vc_bio")      || "just passing through";
 
-    const isMine = msg.uid === currentUser.uid;
-    const time   = formatTime(msg.timestamp || Date.now());
+    let $messages, $input, $onlineNum, $onlineList, $meName, $meAvatar, $connStatus, $shell, $backBtn;
 
-    const el = document.createElement("div");
-    el.className = "message" + (isMine ? " own" : "");
+    // ─── 3) UTILS ──────────────────────────────────────────────────────
+    const esc = (str) => {
+        const d = document.createElement("div");
+        d.textContent = str == null ? "" : str;
+        return d.innerHTML;
+    };
 
-    el.innerHTML = `
-        <div class="message-header" style="color:${msg.color}">
-            ${isMine ? "YOU" : escapeHtml(msg.username)}
-        </div>
-        <div class="message-text">${escapeHtml(msg.text)}</div>
-        <div class="timestamp">${time}</div>
-    `;
+    const linkify = (text) =>
+        esc(text).replace(/(https?:\/\/[^\s<]+)/g, '<a href="$1" target="_blank" rel="noopener noreferrer">$1</a>');
 
-    messagesEl.appendChild(el);
-    messagesEl.scrollTop = messagesEl.scrollHeight;
-}
+    const fmtTime = (ts) =>
+        new Date(ts).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
 
-// ── Load Chat ─────────────────────────────────────────────────
+    const fmtDay = (ts) => {
+        const d = new Date(ts);
+        const today = new Date();
+        const yest  = new Date(); yest.setDate(today.getDate() - 1);
+        const same  = (a, b) => a.toDateString() === b.toDateString();
+        if (same(d, today)) return "today";
+        if (same(d, yest))  return "yesterday";
+        return d.toLocaleDateString(undefined, { weekday: "long", month: "short", day: "numeric" });
+    };
 
-function clearListener() {
-    if (currentListener) {
-        currentListener.off();
-        currentListener = null;
-    }
-}
+    const initials = (name) => (name || "??").trim().slice(0, 2).toUpperCase();
+    const chatId   = (a, b) => [a, b].sort().join("_");
 
-function loadChat() {
-    clearListener();
-    messagesEl.innerHTML = `
-        <div class="empty-state">
-            <div class="empty-icon">◈</div>
-            <div>Loading messages...</div>
-        </div>
-    `;
+    const toast = (msg, type) => {
+        document.querySelectorAll(".toast").forEach((t) => t.remove());
+        const t = document.createElement("div");
+        t.className = "toast" + (type === "error" ? " error" : "");
+        t.textContent = msg;
+        document.body.appendChild(t);
+        requestAnimationFrame(() => t.classList.add("show"));
+        setTimeout(() => {
+            t.classList.remove("show");
+            setTimeout(() => t.remove(), 300);
+        }, 2400);
+    };
 
-    const ref = currentChat === "public"
-        ? db.ref("publicMessages").limitToLast(100)
-        : db.ref("dms/" + chatId(currentUser.uid, currentChat)).limitToLast(100);
+    const normalizeUsername = (raw) =>
+        (raw || "").toLowerCase().replace(/[^a-z0-9_-]/g, "").slice(0, 24);
 
-    currentListener = ref;
-
-    // Use child_added for real-time streaming
-    ref.on("child_added", (snap) => {
-        // On first batch, clear the loading placeholder once
-        const empty = messagesEl.querySelector(".empty-state");
-        if (empty) empty.remove();
-        render(snap.val());
-    });
-}
-
-// ── Public Chat ───────────────────────────────────────────────
-
-function openPublicChat() {
-    currentChat = "public";
-    document.querySelector(".logo-title").innerHTML = "VOID<span>CHAT</span>";
-    document.querySelector(".logo-sub").textContent = "v2.0 // PUBLIC CHANNEL";
-    document.querySelector(".chat-title").textContent = "// PUBLIC CHANNEL";
-    document.querySelector(".chat-hint").textContent = "Messages are public";
-    loadChat();
-}
-
-// ── Open DM ───────────────────────────────────────────────────
-
-async function openDM(uid) {
-    if (uid === currentUser.uid) {
-        showToast("Can't DM yourself", "error");
-        return;
+    // ─── 4) AUTH ───────────────────────────────────────────────────────
+    function initAuth() {
+        return new Promise((resolve, reject) => {
+            auth.onAuthStateChanged(async (user) => {
+                if (user) return resolve(user);
+                try { await auth.signInAnonymously(); }
+                catch (e) { console.error(e); reject(e); }
+            });
+        });
     }
 
-    const snap = await db.ref("users/" + uid).get();
-    if (!snap.exists()) {
-        showToast("User not found", "error");
-        return;
+    // ─── 5) PROFILE SYNC ───────────────────────────────────────────────
+    async function saveUser() {
+        if (!currentUser) return;
+        const norm = normalizeUsername(username);
+        if (!norm) throw new Error("invalid username");
+
+        const existing = await db.ref("usernames/" + norm).get();
+        if (existing.exists() && existing.val() !== currentUser.uid) {
+            throw new Error("username taken");
+        }
+
+        const oldNorm = localStorage.getItem("vc_norm");
+        if (oldNorm && oldNorm !== norm) {
+            await db.ref("usernames/" + oldNorm).remove().catch(() => {});
+        }
+
+        await db.ref("users/" + currentUser.uid).set({
+            uid:           currentUser.uid,
+            username,
+            usernameLower: norm,
+            color:         userColor,
+            bio:           userBio,
+            lastSeen:      firebase.database.ServerValue.TIMESTAMP
+        });
+        await db.ref("usernames/" + norm).set(currentUser.uid);
+
+        localStorage.setItem("vc_username", username);
+        localStorage.setItem("vc_color",    userColor);
+        localStorage.setItem("vc_bio",      userBio);
+        localStorage.setItem("vc_norm",     norm);
+
+        renderMe();
     }
 
-    const user = snap.val();
-    currentChat = uid;
-
-    document.querySelector(".logo-title").innerHTML =
-        `DM <span style="color:${user.color}">@${escapeHtml(user.username)}</span>`;
-    document.querySelector(".logo-sub").textContent = "// PRIVATE MESSAGE";
-    document.querySelector(".chat-title").textContent = `// DM with @${user.username}`;
-    document.querySelector(".chat-hint").textContent = "Private — only you two can see this";
-
-    // Close search results
-    document.getElementById("search-results").innerHTML = "";
-    document.getElementById("user-search").value = "";
-
-    loadChat();
-}
-
-// ── Search User ───────────────────────────────────────────────
-
-async function searchUser() {
-    const q   = document.getElementById("user-search").value.trim().toLowerCase();
-    const out = document.getElementById("search-results");
-
-    if (!q) {
-        out.innerHTML = "";
-        return;
+    function renderMe() {
+        $meName.textContent   = "@" + username;
+        $meName.style.color   = userColor;
+        $meAvatar.textContent = initials(username);
+        $meAvatar.style.color = userColor;
+        $meAvatar.style.borderColor = userColor + "55";
+        $meAvatar.style.background  = userColor + "10";
     }
 
-    out.innerHTML = `<div class="user-not-found">Searching...</div>`;
+    // ─── 6) PRESENCE ───────────────────────────────────────────────────
+    function setupPresence() {
+        const connectedRef = db.ref(".info/connected");
 
-    try {
-        // Exact match first
-        const snap = await db.ref("usernames/" + q).get();
+        connectedRef.on("value", (snap) => {
+            const online = snap.val() === true;
+            setConnStatus(online ? "online" : "offline");
+            if (!online) return;
 
-        if (!snap.exists()) {
-            out.innerHTML = `<div class="user-not-found">No user found for "${escapeHtml(q)}"</div>`;
+            const presRef = db.ref("presence/" + currentUser.uid);
+            presRef.onDisconnect().remove();
+            presRef.set({
+                uid:      currentUser.uid,
+                username,
+                color:    userColor,
+                last:     firebase.database.ServerValue.TIMESTAMP
+            });
+        });
+
+        if (presenceListenerRef) presenceListenerRef.off();
+        presenceListenerRef = db.ref("presence");
+        presenceListenerRef.on("value", (snap) => {
+            const list = [];
+            snap.forEach((c) => list.push(c.val()));
+            $onlineNum.textContent = list.length;
+            renderOnlineList(list);
+        });
+    }
+
+    function renderOnlineList(list) {
+        const me     = list.find((u) => u.uid === currentUser.uid);
+        const others = list.filter((u) => u.uid !== currentUser.uid)
+                           .sort((a, b) => (a.username || "").localeCompare(b.username || ""));
+        const ordered = me ? [me, ...others] : others;
+
+        if (ordered.length === 0) {
+            $onlineList.innerHTML = '<div class="online-empty">no one in the void…</div>';
             return;
         }
 
-        const uid      = snap.val();
-        const userSnap = await db.ref("users/" + uid).get();
-
-        if (!userSnap.exists()) {
-            out.innerHTML = `<div class="user-not-found">User data not found</div>`;
-            return;
-        }
-
-        const u         = userSnap.val();
-        const isMe      = uid === currentUser.uid;
-        const avatarBg  = u.color + "22";
-
-        out.innerHTML = `
-            <div class="user-card">
-                <div class="user-avatar" style="background:${avatarBg}; border-color:${u.color}; color:${u.color}">
-                    ${initials(u.username)}
-                </div>
-                <div class="user-info">
-                    <div class="user-name" style="color:${u.color}">@${escapeHtml(u.username)}</div>
-                    <div class="user-bio">${escapeHtml(u.bio || "No bio")}</div>
-                </div>
-                ${isMe
-                    ? `<button onclick="showProfilePanel()">Edit Profile</button>`
-                    : `<button onclick="openDM('${uid}')">Message</button>`
-                }
-            </div>
-        `;
-    } catch (err) {
-        out.innerHTML = `<div class="user-not-found">Error searching. Try again.</div>`;
-    }
-}
-
-// ── Profile Panel ─────────────────────────────────────────────
-
-function showProfilePanel() {
-    const modal = document.createElement("div");
-    modal.className = "modal";
-    modal.id = "profile-modal";
-
-    modal.innerHTML = `
-        <div class="profile-panel">
-            <h2>// EDIT PROFILE</h2>
-
-            <div class="form-group">
-                <label class="form-label">USERNAME</label>
-                <input id="pname" value="${escapeHtml(username)}" maxlength="24" placeholder="Your username" />
-            </div>
-
-            <div class="form-group">
-                <label class="form-label">BIO</label>
-                <textarea id="pbio" maxlength="160" placeholder="Write something...">${escapeHtml(userBio)}</textarea>
-            </div>
-
-            <div class="form-group">
-                <label class="form-label">ACCENT COLOR</label>
-                <div class="color-row">
-                    <input type="color" id="pcolor" value="${userColor}" />
-                    <span class="color-preview" id="color-preview-text">${userColor}</span>
-                </div>
-            </div>
-
-            <div class="profile-buttons">
-                <button class="btn-primary" onclick="saveProfile()">SAVE</button>
-                <button onclick="closeProfilePanel()">CANCEL</button>
-            </div>
-        </div>
-    `;
-
-    // Update color preview text live
-    modal.querySelector("#pcolor").addEventListener("input", (e) => {
-        modal.querySelector("#color-preview-text").textContent = e.target.value;
-    });
-
-    // Click outside to close
-    modal.addEventListener("click", (e) => {
-        if (e.target === modal) closeProfilePanel();
-    });
-
-    document.body.appendChild(modal);
-}
-
-function closeProfilePanel() {
-    const modal = document.getElementById("profile-modal");
-    if (modal) modal.remove();
-}
-
-async function saveProfile() {
-    const newName  = document.getElementById("pname").value.trim();
-    const newBio   = document.getElementById("pbio").value.trim();
-    const newColor = document.getElementById("pcolor").value;
-
-    if (!newName) {
-        showToast("Username can't be empty", "error");
-        return;
-    }
-    if (newName.length < 2) {
-        showToast("Username too short (min 2 chars)", "error");
-        return;
+        $onlineList.innerHTML = ordered.map((u) => {
+            const isMe = u.uid === currentUser.uid;
+            const action = isMe ? "you" : "→";
+            const onclick = isMe ? "VC.showProfilePanel()" : "VC.openDM('" + u.uid + "')";
+            return (
+                '<div class="u-card" onclick="' + onclick + '">' +
+                    '<div class="av" style="color:' + u.color + '; border-color:' + u.color + '55; background:' + u.color + '10">' +
+                        esc(initials(u.username)) +
+                    '</div>' +
+                    '<div class="stack">' +
+                        '<div class="name" style="color:' + u.color + '">@' + esc(u.username) + '</div>' +
+                        '<div class="bio">' + (isMe ? "this is you" : "click to DM") + '</div>' +
+                    '</div>' +
+                    '<span class="arrow">' + action + '</span>' +
+                '</div>'
+            );
+        }).join("");
     }
 
-    username  = newName;
-    userBio   = newBio;
-    userColor = newColor;
-
-    try {
-        await saveUser();
-        closeProfilePanel();
-        showToast("Profile saved!");
-    } catch (err) {
-        showToast("Save failed. Try again.", "error");
-    }
-}
-
-// ── Char Counter ──────────────────────────────────────────────
-
-function updateCharCount() {
-    const counter = document.getElementById("char-count");
-    const len     = messageInput.value.length;
-    const left    = 500 - len;
-    counter.textContent = left;
-    counter.className   = "char-count" + (left < 50 ? " danger" : left < 100 ? " warn" : "");
-}
-
-// ── Particle Background ───────────────────────────────────────
-
-function initParticles() {
-    const canvas = document.getElementById("particles-canvas");
-    if (!canvas) return;
-
-    const ctx    = canvas.getContext("2d");
-    let W, H, particles;
-
-    function resize() {
-        W = canvas.width  = window.innerWidth;
-        H = canvas.height = window.innerHeight;
+    function setConnStatus(state) {
+        if (!$connStatus) return;
+        $connStatus.classList.remove("connecting", "online", "offline");
+        $connStatus.classList.add(state);
+        const label = $connStatus.querySelector(".conn-label");
+        if (label) label.textContent = state === "online" ? "online" : state === "offline" ? "offline" : "connecting…";
     }
 
-    function makeParticle() {
-        return {
-            x:    Math.random() * W,
-            y:    Math.random() * H,
-            r:    Math.random() * 1.5 + 0.3,
-            dx:   (Math.random() - 0.5) * 0.25,
-            dy:  -(Math.random() * 0.3 + 0.1),
-            a:    Math.random()
+    // ─── 7) MESSAGES ───────────────────────────────────────────────────
+    function chatRef() {
+        return currentChat === "public"
+            ? db.ref("publicMessages")
+            : db.ref("dms/" + chatId(currentUser.uid, currentChat));
+    }
+
+    async function sendMessage() {
+        const text = $input.value.trim();
+        if (!text) return;
+        if (text.length > 500) return toast("max 500 chars", "error");
+
+        const now = Date.now();
+        if (now - lastSentAt < 600) return toast("slow down", "error");
+        lastSentAt = now;
+
+        const payload = {
+            uid:       currentUser.uid,
+            username,
+            color:     userColor,
+            text,
+            timestamp: firebase.database.ServerValue.TIMESTAMP
         };
+
+        try {
+            await chatRef().push(payload);
+            $input.value = "";
+            updateCharCount();
+        } catch (e) {
+            console.error(e);
+            toast("failed to send", "error");
+        }
     }
 
-    resize();
-    particles = Array.from({ length: 80 }, makeParticle);
-    window.addEventListener("resize", resize);
+    function clearMessagesUI() {
+        $messages.innerHTML = "";
+        renderedKeys = new Set();
+        lastDay = null;
+    }
 
-    function draw() {
-        ctx.clearRect(0, 0, W, H);
+    function renderMessage(key, m) {
+        if (renderedKeys.has(key)) return;
+        renderedKeys.add(key);
 
-        for (const p of particles) {
-            ctx.beginPath();
-            ctx.arc(p.x, p.y, p.r, 0, Math.PI * 2);
-            ctx.fillStyle = `rgba(0,255,157,${p.a * 0.6})`;
-            ctx.fill();
+        const emptyEl = $messages.querySelector(".empty");
+        if (emptyEl) emptyEl.remove();
 
-            p.x += p.dx;
-            p.y += p.dy;
-            p.a += (Math.random() - 0.5) * 0.01;
-            p.a  = Math.max(0.05, Math.min(1, p.a));
+        const ts = m.timestamp || Date.now();
 
-            if (p.y < -5 || p.x < -5 || p.x > W + 5) {
-                Object.assign(p, makeParticle());
-                p.y = H + 5;
-            }
+        const day = fmtDay(ts);
+        if (day !== lastDay) {
+            lastDay = day;
+            const sep = document.createElement("div");
+            sep.className = "day-divider";
+            sep.textContent = day;
+            $messages.appendChild(sep);
         }
 
-        requestAnimationFrame(draw);
+        const isMine = m.uid === currentUser.uid;
+        const el = document.createElement("div");
+        el.className = "msg" + (isMine ? " own" : "");
+        el.innerHTML =
+            '<div class="msg-head">' +
+                '<span class="msg-name" style="color:' + (m.color || "var(--lime)") + '">' +
+                    (isMine ? "you" : "@" + esc(m.username)) +
+                '</span>' +
+                '<span class="msg-time">' + fmtTime(ts) + '</span>' +
+            '</div>' +
+            '<div class="msg-text">' + linkify(m.text || "") + '</div>';
+
+        $messages.appendChild(el);
+        $messages.scrollTop = $messages.scrollHeight;
     }
 
-    draw();
-}
+    function loadChat() {
+        if (listenerRef) { listenerRef.off(); listenerRef = null; }
 
-// ── Init ──────────────────────────────────────────────────────
+        clearMessagesUI();
+        $messages.innerHTML =
+            '<div class="empty">' +
+                '<div class="empty-glyph">◌</div>' +
+                '<div class="empty-text">loading the signal…</div>' +
+            '</div>';
 
-window.onload = async () => {
-    messagesEl   = document.getElementById("messages");
-    messageInput = document.getElementById("message-input");
-    onlineNumEl  = document.getElementById("online-num");
+        const ref = chatRef().limitToLast(100);
+        listenerRef = ref;
+        ref.on("child_added", (snap) => renderMessage(snap.key, snap.val()));
+    }
 
-    // Keyboard shortcuts
-    messageInput.addEventListener("keypress", (e) => {
-        if (e.key === "Enter" && !e.shiftKey) sendMessage();
-    });
-    messageInput.addEventListener("input", updateCharCount);
+    // ─── 8) CHAT MODES ─────────────────────────────────────────────────
+    function openPublicChat() {
+        currentChat = "public";
+        document.getElementById("chat-title").textContent = "public channel";
+        document.getElementById("chat-hint").textContent  = "everyone with the link can read & write";
+        $backBtn.classList.remove("visible");
+        if ($shell) $shell.classList.remove("show-chat");
+        loadChat();
+    }
 
-    // Search on Enter
-    document.getElementById("user-search").addEventListener("keypress", (e) => {
-        if (e.key === "Enter") searchUser();
-    });
+    async function openDM(uid) {
+        if (uid === currentUser.uid) return toast("can't DM yourself", "error");
 
-    // ESC closes modals
-    document.addEventListener("keydown", (e) => {
-        if (e.key === "Escape") closeProfilePanel();
-    });
+        const snap = await db.ref("users/" + uid).get();
+        if (!snap.exists()) return toast("user not found", "error");
 
-    // Particles
-    initParticles();
+        const u = snap.val();
+        currentChat = uid;
+        document.getElementById("chat-title").innerHTML =
+            'dm with <span style="color:' + u.color + '">@' + esc(u.username) + '</span>';
+        document.getElementById("chat-hint").textContent = "private — only you two can see this";
+        $backBtn.classList.add("visible");
+        if ($shell) $shell.classList.add("show-chat");
 
-    // Auth + sync
-    currentUser = await initAuth();
-    await saveUser();
-    setupPresence();
-    loadChat();
-};
+        document.getElementById("search-results").innerHTML = "";
+        document.getElementById("user-search").value = "";
+
+        loadChat();
+    }
+
+    // ─── 9) SEARCH ─────────────────────────────────────────────────────
+    async function searchUser() {
+        const raw = document.getElementById("user-search").value;
+        const q   = normalizeUsername(raw);
+        const out = document.getElementById("search-results");
+
+        if (!q) { out.innerHTML = ""; return; }
+
+        out.innerHTML = '<div class="u-empty">searching…</div>';
+        try {
+            const snap = await db.ref("usernames/" + q).get();
+            if (!snap.exists()) {
+                out.innerHTML = '<div class="u-empty">no soul named "' + esc(q) + '"</div>';
+                return;
+            }
+            const uid = snap.val();
+            const userSnap = await db.ref("users/" + uid).get();
+            if (!userSnap.exists()) {
+                out.innerHTML = '<div class="u-empty">user data missing</div>';
+                return;
+            }
+            const u = userSnap.val();
+            const isMe = uid === currentUser.uid;
+            const onclick = isMe ? "VC.showProfilePanel()" : "VC.openDM('" + uid + "')";
+            out.innerHTML =
+                '<div class="u-card" onclick="' + onclick + '">' +
+                    '<div class="av" style="color:' + u.color + '; border-color:' + u.color + '55; background:' + u.color + '10">' +
+                        esc(initials(u.username)) +
+                    '</div>' +
+                    '<div class="stack">' +
+                        '<div class="name" style="color:' + u.color + '">@' + esc(u.username) + '</div>' +
+                        '<div class="bio">' + esc(u.bio || "no bio") + '</div>' +
+                    '</div>' +
+                    '<span class="arrow">' + (isMe ? "you" : "→") + '</span>' +
+                '</div>';
+        } catch (e) {
+            console.error(e);
+            out.innerHTML = '<div class="u-empty">search failed</div>';
+        }
+    }
+
+    // ─── 10) PROFILE MODAL ─────────────────────────────────────────────
+    function showProfilePanel() {
+        const root = document.getElementById("modal-root");
+        const swatches = COLORS.map((c) =>
+            '<div class="color-swatch ' + (c === userColor ? "active" : "") + '" style="background:' + c + '" data-color="' + c + '"></div>'
+        ).join("");
+
+        root.innerHTML =
+            '<div class="modal">' +
+                '<div class="modal-panel">' +
+                    '<div class="modal-title">edit your shadow</div>' +
+                    '<div class="modal-sub">you are anonymous — but you can still have style</div>' +
+
+                    '<div class="field">' +
+                        '<label>username</label>' +
+                        '<input id="p-username" maxlength="24" value="' + esc(username) + '" />' +
+                    '</div>' +
+
+                    '<div class="field">' +
+                        '<label>bio</label>' +
+                        '<textarea id="p-bio" maxlength="160">' + esc(userBio) + '</textarea>' +
+                    '</div>' +
+
+                    '<div class="field">' +
+                        '<label>accent color</label>' +
+                        '<div class="color-grid" id="p-colors">' + swatches + '</div>' +
+                    '</div>' +
+
+                    '<div class="modal-actions">' +
+                        '<button class="btn ghost" onclick="VC.closeProfilePanel()">cancel</button>' +
+                        '<button class="btn primary" onclick="VC.saveProfile()">save</button>' +
+                    '</div>' +
+                '</div>' +
+            '</div>';
+
+        root.querySelectorAll(".color-swatch").forEach((sw) => {
+            sw.addEventListener("click", () => {
+                root.querySelectorAll(".color-swatch").forEach((s) => s.classList.remove("active"));
+                sw.classList.add("active");
+                userColor = sw.dataset.color;
+            });
+        });
+
+        root.querySelector(".modal").addEventListener("click", (e) => {
+            if (e.target.classList.contains("modal")) closeProfilePanel();
+        });
+    }
+
+    function closeProfilePanel() {
+        document.getElementById("modal-root").innerHTML = "";
+    }
+
+    async function saveProfile() {
+        const newName = document.getElementById("p-username").value.trim();
+        const newBio  = document.getElementById("p-bio").value.trim();
+        const norm    = normalizeUsername(newName);
+
+        if (!norm || norm.length < 2) return toast("username too short", "error");
+        if (norm.length > 24)         return toast("username too long", "error");
+
+        const prev = { username, userBio };
+        username = norm;
+        userBio  = newBio;
+
+        try {
+            await saveUser();
+            closeProfilePanel();
+            toast("profile saved");
+        } catch (e) {
+            username = prev.username;
+            userBio  = prev.userBio;
+            console.error(e);
+            toast(e.message === "username taken" ? "username already taken" : "save failed", "error");
+        }
+    }
+
+    // ─── 11) MISC UI ───────────────────────────────────────────────────
+    function updateCharCount() {
+        const left = 500 - $input.value.length;
+        const el = document.getElementById("char-count");
+        el.textContent = left;
+        el.className = "char-count" + (left < 40 ? " danger" : left < 100 ? " warn" : "");
+    }
+
+    function copyShareLink() {
+        const url = window.location.origin + window.location.pathname;
+        navigator.clipboard.writeText(url).then(
+            () => toast("link copied — share it!"),
+            () => toast("copy failed", "error")
+        );
+    }
+
+    // ─── 12) PARTICLES ─────────────────────────────────────────────────
+    function initParticles() {
+        const canvas = document.getElementById("particles");
+        if (!canvas) return;
+        const ctx = canvas.getContext("2d");
+        let W, H, parts;
+
+        const resize = () => {
+            W = canvas.width  = window.innerWidth;
+            H = canvas.height = window.innerHeight;
+        };
+        const mk = () => ({
+            x:  Math.random() * W,
+            y:  Math.random() * H,
+            r:  Math.random() * 1.4 + 0.3,
+            dx: (Math.random() - 0.5) * 0.18,
+            dy: -(Math.random() * 0.25 + 0.06),
+            a:  Math.random() * 0.6 + 0.1
+        });
+
+        resize();
+        parts = Array.from({ length: 70 }, mk);
+        window.addEventListener("resize", resize);
+
+        (function draw() {
+            ctx.clearRect(0, 0, W, H);
+            for (const p of parts) {
+                ctx.beginPath();
+                ctx.arc(p.x, p.y, p.r, 0, Math.PI * 2);
+                ctx.fillStyle = "rgba(198,255,61," + (p.a * 0.55) + ")";
+                ctx.fill();
+                p.x += p.dx; p.y += p.dy;
+                if (p.y < -4 || p.x < -4 || p.x > W + 4) {
+                    Object.assign(p, mk());
+                    p.y = H + 4;
+                }
+            }
+            requestAnimationFrame(draw);
+        })();
+    }
+
+    // ─── 13) BOOT ──────────────────────────────────────────────────────
+    async function boot() {
+        $messages    = document.getElementById("messages");
+        $input       = document.getElementById("message-input");
+        $onlineNum   = document.getElementById("online-num");
+        $onlineList  = document.getElementById("online-list");
+        $meName      = document.getElementById("me-name");
+        $meAvatar    = document.getElementById("me-avatar");
+        $connStatus  = document.getElementById("conn-status");
+        $shell       = document.querySelector(".shell");
+        $backBtn     = document.getElementById("back-btn");
+
+        $input.addEventListener("keydown", (e) => {
+            if (e.key === "Enter" && !e.shiftKey) {
+                e.preventDefault();
+                sendMessage();
+            }
+        });
+        $input.addEventListener("input", updateCharCount);
+        document.getElementById("user-search").addEventListener("keydown", (e) => {
+            if (e.key === "Enter") { e.preventDefault(); searchUser(); }
+        });
+        document.addEventListener("keydown", (e) => {
+            if (e.key === "Escape") closeProfilePanel();
+        });
+
+        renderMe();
+        initParticles();
+
+        try {
+            currentUser = await initAuth();
+            username = normalizeUsername(username) || "ghost-" + Math.floor(Math.random() * 9999);
+            try {
+                await saveUser();
+            } catch (e) {
+                if (e.message === "username taken") {
+                    username = username + "-" + Math.floor(Math.random() * 999);
+                    await saveUser();
+                } else {
+                    throw e;
+                }
+            }
+            setupPresence();
+            loadChat();
+        } catch (e) {
+            console.error(e);
+            toast("failed to connect to the void", "error");
+            setConnStatus("offline");
+        }
+    }
+
+    window.addEventListener("DOMContentLoaded", boot);
+
+    window.VC = {
+        sendMessage,
+        searchUser,
+        openDM,
+        openPublicChat,
+        showProfilePanel,
+        closeProfilePanel,
+        saveProfile,
+        copyShareLink
+    };
+})();

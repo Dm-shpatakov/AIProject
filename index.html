@@ -1,89 +1,99 @@
-<!-- ========================= index.html ========================= -->
 <!DOCTYPE html>
 <html lang="en">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-
-    <title>VOIDCHAT</title>
-
-    <link rel="stylesheet" href="styles.css">
-
-    <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-app-compat.js"></script>
-<script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-auth-compat.js"></script>
-<script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-database-compat.js"></script>
-
-<script src="script.js"></script>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="description" content="VOIDCHAT — anonymous realtime chat in the void." />
+    <title>VOIDCHAT // signal in the noise</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+        href="https://fonts.googleapis.com/css2?family=Instrument+Serif:ital@0;1&family=JetBrains+Mono:wght@400;500;700&family=Major+Mono+Display&display=swap"
+        rel="stylesheet"
+    />
+    <link rel="stylesheet" href="styles.css" />
 </head>
-
 <body>
+    <div class="grain" aria-hidden="true"></div>
+    <div class="scanlines" aria-hidden="true"></div>
+    <canvas id="particles" aria-hidden="true"></canvas>
 
-<div class="container">
+    <div id="conn-status" class="conn-status connecting">
+        <span class="conn-dot"></span>
+        <span class="conn-label">connecting…</span>
+    </div>
 
-    <header>
+    <main class="shell">
+        <aside class="sidebar">
+            <header class="brand">
+                <div class="brand-mark" onclick="VC.openPublicChat()">
+                    <span class="brand-glyph">◉</span>
+                    <span class="brand-name">void<em>chat</em></span>
+                </div>
+                <div class="brand-sub">a signal in the noise</div>
+            </header>
 
-        <div class="logo" onclick="openPublicChat()">
-            VOID<span>CHAT</span>
-        </div>
+            <section class="panel">
+                <div class="panel-label">find someone</div>
+                <div class="search-row">
+                    <input type="text" id="user-search" placeholder="@ username" autocomplete="off" spellcheck="false" maxlength="24" />
+                    <button class="btn ghost" onclick="VC.searchUser()" title="Search">→</button>
+                </div>
+                <div id="search-results" class="search-results"></div>
+            </section>
 
-        <div class="header-right">
+            <section class="panel grow">
+                <div class="panel-label between">
+                    <span>online now</span>
+                    <span class="count-chip"><span id="online-num">0</span></span>
+                </div>
+                <div id="online-list" class="online-list"></div>
+            </section>
 
-            <div id="online-count">
-                0 online
+            <footer class="me" id="me-footer" onclick="VC.showProfilePanel()">
+                <div class="me-avatar" id="me-avatar">??</div>
+                <div class="me-info">
+                    <div class="me-name" id="me-name">…</div>
+                    <div class="me-hint">click to edit profile</div>
+                </div>
+                <span class="me-edit">✎</span>
+            </footer>
+        </aside>
+
+        <section class="chat">
+            <header class="chat-header">
+                <div class="chat-meta">
+                    <button class="btn ghost back-btn" id="back-btn" onclick="VC.openPublicChat()" title="Back to public">←</button>
+                    <div>
+                        <div class="chat-title" id="chat-title">public channel</div>
+                        <div class="chat-hint" id="chat-hint">everyone with the link can read & write</div>
+                    </div>
+                </div>
+                <div class="chat-actions">
+                    <button class="btn ghost" onclick="VC.copyShareLink()" title="Copy share link">share ↗</button>
+                </div>
+            </header>
+
+            <div id="messages" class="messages">
+                <div class="empty">
+                    <div class="empty-glyph">◌</div>
+                    <div class="empty-text">connecting to the void…</div>
+                </div>
             </div>
 
-            <button onclick="showProfilePanel()">
-                👤 Profile
-            </button>
+            <form class="composer" onsubmit="event.preventDefault(); VC.sendMessage();">
+                <input type="text" id="message-input" placeholder="say something into the void…" autocomplete="off" maxlength="500" />
+                <span class="char-count" id="char-count">500</span>
+                <button class="btn primary" type="submit">send <span class="kbd">↵</span></button>
+            </form>
+        </section>
+    </main>
 
-        </div>
+    <div id="modal-root"></div>
 
-    </header>
-
-    <!-- USER SEARCH -->
-
-    <div class="search-section">
-
-        <input
-            type="text"
-            id="user-search"
-            placeholder="Search username..."
-        >
-
-        <button onclick="searchUser()">
-            Search
-        </button>
-
-    </div>
-
-    <div id="search-results"></div>
-
-    <!-- CHAT -->
-
-    <div class="chat-area">
-
-        <div id="messages" class="messages"></div>
-
-        <div class="input-area">
-
-            <input
-                type="text"
-                id="message-input"
-                placeholder="Type a message..."
-                autocomplete="off"
-            >
-
-            <button onclick="sendMessage()">
-                SEND
-            </button>
-
-        </div>
-
-    </div>
-
-</div>
-
-<script src="script.js"></script>
-
+    <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-auth-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-database-compat.js"></script>
+    <script src="script.js"></script>
 </body>
 </html>
